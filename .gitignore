@@ -11,4 +11,5 @@ wheels/
 .env
 autonomous_vision_*
 video.mp4
-yolo*
+yolo11*
+yolov*
