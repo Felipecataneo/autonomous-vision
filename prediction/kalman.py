@@ -62,9 +62,9 @@ class KalmanTrajectoryPredictor:
                 [0, 1, 0, 0, 0, 0]
             ], dtype=float)
             
-            # Ruído de processo (6x6)
+            # Ruído de processo (Q): Maior incerteza na aceleração
             kf.Q = np.eye(6) * self.process_noise
-            kf.Q[4:6, 4:6] *= 2  # Maior incerteza na aceleração
+            kf.Q[4:, 4:] *= 10
             
         else:
             # Modelo simples: [x, y, vx, vy]
@@ -85,10 +85,10 @@ class KalmanTrajectoryPredictor:
             
             kf.Q = np.eye(4) * self.process_noise
         
-        # Ruído de medição (2x2 - sempre igual)
+        # Ruído de medição (R) - Confiança na detecção do YOLO
         kf.R = np.eye(2) * self.measurement_noise
         
-        # Covariância inicial
+        # Covariância inicial (P)
         kf.P *= self.initial_covariance
         
         return kf
@@ -102,20 +102,15 @@ class KalmanTrajectoryPredictor:
     def update(self, track_id: int, position: Tuple[int, int]) -> None:
         """
         Atualiza filtro com nova medição
-        
-        Args:
-            track_id: ID do objeto rastreado
-            position: (x, y) posição atual
         """
         kf = self.get_filter(track_id)
         pos_array = np.array([float(position[0]), float(position[1])])
         
-        # Primeira medição: inicializa estado
         if track_id not in self.last_update:
-            if self.use_acceleration:
-                kf.x = np.array([pos_array[0], pos_array[1], 0, 0, 0, 0])
-            else:
-                kf.x = np.array([pos_array[0], pos_array[1], 0, 0])
+            # Primeira medição: inicializa estado
+            state_size = 6 if self.use_acceleration else 4
+            kf.x = np.zeros(state_size)
+            kf.x[0], kf.x[1] = pos_array[0], pos_array[1]
         else:
             # Predição + atualização
             kf.predict()
@@ -132,14 +127,6 @@ class KalmanTrajectoryPredictor:
     ) -> List[Tuple[int, int]]:
         """
         Prediz trajetória futura
-        
-        Args:
-            track_id: ID do objeto
-            steps: Número total de frames para prever
-            step_size: Intervalo entre pontos da trajetória
-        
-        Returns:
-            Lista de (x, y) previstos
         """
         if track_id not in self.filters:
             return []
@@ -147,12 +134,10 @@ class KalmanTrajectoryPredictor:
         kf = self.get_filter(track_id)
         trajectory = []
         
-        # Copia estado atual
         state = kf.x.copy()
         F = kf.F.copy()
         
-        # Propaga estado sem atualização
-        for i in range(0, steps, step_size):
+        for _ in range(0, steps, step_size):
             state = F @ state
             trajectory.append((int(state[0]), int(state[1])))
         
@@ -167,7 +152,7 @@ class KalmanTrajectoryPredictor:
         return (float(kf.x[2]), float(kf.x[3]))
     
     def get_acceleration(self, track_id: int) -> Tuple[float, float]:
-        """Retorna aceleração estimada (ax, ay) - apenas se use_acceleration=True"""
+        """Retorna aceleração estimada (ax, ay)"""
         if not self.use_acceleration or track_id not in self.filters:
             return (0.0, 0.0)
         
@@ -177,7 +162,7 @@ class KalmanTrajectoryPredictor:
     def get_uncertainty(self, track_id: int) -> np.ndarray:
         """Retorna matriz de covariância da posição (2x2)"""
         if track_id not in self.filters:
-            return np.eye(2) * 1000
+            return np.eye(2) * self.initial_covariance
         
         kf = self.filters[track_id]
         return kf.P[:2, :2]

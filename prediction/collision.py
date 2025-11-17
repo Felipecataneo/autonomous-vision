@@ -22,13 +22,11 @@ class CollisionDetector:
         bbox1: List[int],
         bbox2: List[int],
         traj1: List[Tuple[int, int]],
-        traj2: List[Tuple[int, int]]
+        traj2: List[Tuple[int, int]],
+        iou_threshold: float
     ) -> Tuple[bool, Optional[int], Optional[Tuple[int, int]]]:
         """
         Detecta colisão baseado em IoU de bboxes futuras
-        
-        Returns:
-            (vai_colidir, frame_colisão, ponto_colisão)
         """
         if not traj1 or not traj2:
             return False, None, None
@@ -37,9 +35,7 @@ class CollisionDetector:
         collision_frame = None
         collision_point = None
         
-        # Verifica IoU em cada passo da trajetória
         for i, (p1, p2) in enumerate(zip(traj1, traj2)):
-            # Projeta bboxes para posições futuras
             future_box1 = scale_bbox(bbox1, p1)
             future_box2 = scale_bbox(bbox2, p2)
             
@@ -47,46 +43,14 @@ class CollisionDetector:
             
             if iou > max_iou:
                 max_iou = iou
+            
+            if iou > iou_threshold:
                 collision_frame = i
                 collision_point = (
                     (p1[0] + p2[0]) // 2,
                     (p1[1] + p2[1]) // 2
                 )
-        
-        will_collide = max_iou > 0.3
-        return will_collide, collision_frame, collision_point if will_collide else None
-    
-    @staticmethod
-    def will_collide_distance(
-        traj1: List[Tuple[int, int]],
-        traj2: List[Tuple[int, int]],
-        threshold: float = 50.0
-    ) -> Tuple[bool, Optional[int], Optional[Tuple[int, int]]]:
-        """
-        Detecta colisão por distância (método rápido, menos preciso)
-        
-        Returns:
-            (vai_colidir, frame_colisão, ponto_colisão)
-        """
-        if not traj1 or not traj2:
-            return False, None, None
-        
-        # Converte para numpy para vetorização
-        traj1_np = np.array(traj1)
-        traj2_np = np.array(traj2)
-        
-        # Calcula todas as distâncias de uma vez
-        distances = vectorized_distances(traj1_np, traj2_np)
-        
-        min_dist_idx = np.argmin(distances)
-        min_dist = distances[min_dist_idx]
-        
-        if min_dist < threshold:
-            point = (
-                (traj1[min_dist_idx][0] + traj2[min_dist_idx][0]) // 2,
-                (traj1[min_dist_idx][1] + traj2[min_dist_idx][1]) // 2
-            )
-            return True, int(min_dist_idx), point
+                return True, collision_frame, collision_point
         
         return False, None, None
     
@@ -97,13 +61,6 @@ class CollisionDetector:
     ) -> List[Dict]:
         """
         Verifica colisões entre todas as combinações de objetos
-        
-        Args:
-            detections: Lista de detecções com 'box', 'trajectory', etc
-            use_iou: Se True, usa método IoU (mais preciso)
-        
-        Returns:
-            Lista de colisões detectadas
         """
         collisions = []
         
@@ -112,30 +69,29 @@ class CollisionDetector:
                 traj1 = det1.get('trajectory', [])
                 traj2 = det2.get('trajectory', [])
                 
-                if use_iou:
-                    will_collide, frame, point = self.will_collide_iou(
-                        det1['box'],
-                        det2['box'],
-                        traj1,
-                        traj2
-                    )
-                else:
-                    will_collide, frame, point = self.will_collide_distance(
-                        traj1,
-                        traj2,
-                        threshold=60.0
-                    )
+                will_collide, frame, point = self.will_collide_iou(
+                    det1['box'],
+                    det2['box'],
+                    traj1,
+                    traj2,
+                    self.iou_threshold
+                )
                 
                 if will_collide:
-                    # Calcula TTC e MAD para informação adicional
-                    vel1 = det1.get('velocity', (0, 0))
-                    vel2 = det2.get('velocity', (0, 0))
-                    pos1 = det1['center']
-                    pos2 = det2['center']
+                    pos1, vel1 = det1['center'], det1.get('velocity', (0, 0))
+                    pos2, vel2 = det2['center'], det2.get('velocity', (0, 0))
                     
                     ttc = compute_ttc(pos1, vel1, pos2, vel2)
                     mad, t_mad = compute_minimum_distance(pos1, vel1, pos2, vel2)
                     
+                    # Define severidade baseada no tempo para colisão (em frames)
+                    if ttc < 30: # ~1s
+                        severity = 'critical'
+                    elif ttc < 90: # ~3s
+                        severity = 'high'
+                    else:
+                        severity = 'medium'
+
                     collisions.append({
                         'objects': [det1['id'], det2['id']],
                         'labels': [det1['label'], det2['label']],
@@ -143,10 +99,8 @@ class CollisionDetector:
                         'point': point,
                         'ttc': ttc,
                         'min_distance': mad,
-                        'severity': 'high' if ttc < 30 else 'medium' if ttc < 60 else 'low'
+                        'severity': severity
                     })
         
-        # Ordena por tempo (colisões mais iminentes primeiro)
         collisions.sort(key=lambda c: c['time'])
-        
         return collisions

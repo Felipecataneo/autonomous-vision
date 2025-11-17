@@ -1,5 +1,5 @@
 """
-Configurações centralizadas do sistema
+Configurações centralizadas do sistema - Otimizado para RTX 4070
 """
 from dataclasses import dataclass, field
 from typing import Literal
@@ -8,11 +8,21 @@ from typing import Literal
 @dataclass
 class YOLOConfig:
     """Configurações do YOLO"""
-    model_path: str = "yolo11n.pt"
-    conf_threshold: float = 0.25
+    # MUDANÇA: Usando o modelo 'medium'. Sua 4070 aguenta sem problemas.
+    # A precisão de detecção será drasticamente maior.
+    # (Você precisará baixar este modelo, mas o sistema deve fazer isso automaticamente)
+    model_path: str = "yolo11m.pt"
+    
+    # MUDANÇA: Menor threshold. Com um modelo maior, podemos confiar mais em
+    # detecções com menor confiança, capturando mais objetos distantes/ocultos.
+    conf_threshold: float = 0.20
+    
     iou_threshold: float = 0.45
     tracker: str = "bytetrack.yaml"
-    device: str = "auto"  # auto, cuda, cpu, mps
+    
+    # MUDANÇA: Forçar o uso de CUDA. Com 'auto', ele já escolheria, mas
+    # especificar 'cuda:0' é uma boa prática para garantir o uso da GPU principal.
+    device: str = "cuda:0"
     
 
 @dataclass
@@ -20,16 +30,24 @@ class KalmanConfig:
     """Configurações do Filtro de Kalman"""
     use_acceleration: bool = True
     measurement_noise: float = 10.0
-    process_noise: float = 0.1
+    
+    # MUDANÇA: Aumentamos o ruído de processo. Como o sistema roda mais rápido,
+    # queremos que o filtro reaja mais rapidamente a mudanças de direção.
+    # A trajetória ficará um pouco menos "suave", mas muito mais reativa e realista.
+    process_noise: float = 0.3
+    
     initial_covariance: float = 1000.0
     
 
 @dataclass
 class CollisionConfig:
     """Configurações de detecção de colisão"""
-    iou_threshold: float = 0.3
-    time_horizon: int = 60  # frames
-    prediction_step: int = 5  # frames
+    # MUDANÇA: Um threshold um pouco mais baixo para ser mais sensível a
+    # sobreposições iminentes.
+    iou_threshold: float = 0.25
+    
+    time_horizon: int = 60
+    prediction_step: int = 5
     
 
 @dataclass
@@ -38,17 +56,25 @@ class AnalyzerConfig:
     provider: Literal["ollama", "openai"] = "ollama"
     model: str = "qwen3-vl:8b"
     base_url: str = "http://localhost:11434"
-    analysis_interval: float = 3.0
+    
+    # MUDANÇA: Análise muito mais frequente. Sua GPU acelera o Ollama,
+    # então a latência de inferência será baixa. Podemos consultar a IA com mais frequência.
+    analysis_interval: float = 1.5
+    
     adaptive_interval: bool = True
     max_timeout: int = 45
-    image_max_size: int = 512
-    image_quality: int = 80
+    
+    # MUDANÇA: Imagens maiores para a IA. Isso dá muito mais contexto
+    # e detalhes para a análise, resultando em respostas de maior qualidade.
+    image_max_size: int = 768
+    
+    image_quality: int = 90
     
 
 @dataclass
 class VideoConfig:
     """Configurações de vídeo"""
-    source: str = "0"
+    source: str = "video.mp4" # Mude para "0" para webcam
     save_output: bool = False
     show_window: bool = True
     output_fps: int = 30
