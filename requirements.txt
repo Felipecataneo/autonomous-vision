@@ -1,0 +1,21 @@
+# Core dependencies
+opencv-python>=4.8.0
+numpy>=1.24.0
+requests>=2.31.0
+
+# YOLO
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Kalman Filter
+filterpy>=1.4.5
+
+# Optional (performance)
+numba>=0.57.0
+
+# Optional (logging)
+loguru>=0.7.0
+
+# Optional (environment variables)
+python-dotenv>=1.0.0

@@ -1,0 +1,14 @@
+[project]
+name = "video"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "filterpy>=1.4.5",
+    "numpy",
+    "openai",
+    "opencv-python",
+    "python-dotenv>=1.2.1",
+    "ultralytics",
+]
